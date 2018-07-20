@@ -290,6 +290,8 @@ static void aw2013_led_blink_set(struct aw2013_led *led, unsigned long blinking)
 	 * all off. So we need to power it off.
 	 */
 	if (val == 0) {
+			aw2013_write(led, AW_REG_GLOBAL_CONTROL,
+			AW_LED_FADE_OFF_MASK);
 		if (aw2013_power_on(led->pdata->led, false)) {
 			dev_err(&led->pdata->led->client->dev,
 				"power off failed");
@@ -327,7 +329,20 @@ static ssize_t aw2013_store_blink(struct device *dev,
 
 	return len;
 }
+static ssize_t aw2013_led_status_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+		 u8 val_status;
+	struct led_classdev *led_cdev = dev_get_drvdata(dev);
+	struct aw2013_led *led =
+			container_of(led_cdev, struct aw2013_led, cdev);
 
+	aw2013_read(led, AW_REG_LED_ENABLE, &val_status);
+	printk("zhufeng: aw2013 les status show:%d\n", val_status);
+
+	 return snprintf(buf, PAGE_SIZE, "%d\n",val_status);
+
+}
 static ssize_t aw2013_led_time_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
@@ -369,10 +384,12 @@ static ssize_t aw2013_led_time_store(struct device *dev,
 
 static DEVICE_ATTR(blink, 0664, NULL, aw2013_store_blink);
 static DEVICE_ATTR(led_time, 0664, aw2013_led_time_show, aw2013_led_time_store);
+static DEVICE_ATTR(led_status, 0664, aw2013_led_status_show, NULL);
 
 static struct attribute *aw2013_led_attributes[] = {
 	&dev_attr_blink.attr,
 	&dev_attr_led_time.attr,
+	&dev_attr_led_status.attr,
 	NULL,
 };
 
@@ -385,7 +402,6 @@ static int aw_2013_check_chipid(struct aw2013_led *led)
 	u8 val;
 
 	aw2013_write(led, AW_REG_RESET, AW_LED_RESET_MASK);
-	usleep(AW_LED_RESET_DELAY);
 	aw2013_read(led, AW_REG_RESET, &val);
 	if (val == AW2013_CHIPID)
 		return 0;
@@ -566,7 +582,18 @@ static int aw2013_led_probe(struct i2c_client *client,
 	led_array->num_leds = num_leds;
 
 	mutex_init(&led_array->lock);
-
+pr_info("zjl _aw2013_led_probe_222\n");
+	ret = aw2013_power_init(led_array, true);
+	if (ret) {
+		dev_err(&client->dev, "power init failed");
+		goto fail_parsed_node;
+	}
+	ret=aw2013_power_on(led_array, true);
+	if(ret) {
+	    return -EINVAL;
+	    printk("tsx_aw2013_power_on_fail\n");
+	}
+		pr_info("zjl _aw2013_led_probe_333\n");
 	ret = aw_2013_check_chipid(led_array);
 	if (ret) {
 		dev_err(&client->dev, "Check chip id error\n");
@@ -581,10 +608,10 @@ static int aw2013_led_probe(struct i2c_client *client,
 
 	i2c_set_clientdata(client, led_array);
 
-	ret = aw2013_power_init(led_array, true);
-	if (ret) {
-		dev_err(&client->dev, "power init failed");
-		goto fail_parsed_node;
+	ret=aw2013_power_on(led_array, false);
+	if(ret) {
+	    return -EINVAL;
+	    printk("tsx_aw2013_power_off_fail\n");
 	}
 
 	return 0;
